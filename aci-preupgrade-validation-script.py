@@ -6148,6 +6148,7 @@ class CheckManager:
         scalability_faults_check,
         fabric_port_down_check,
         equipment_disk_limits_exceeded,
+        apic_vmm_inventory_sync_faults_check,
 
         # Configurations
         vpc_paired_switches_check,
