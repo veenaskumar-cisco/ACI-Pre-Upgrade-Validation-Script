@@ -2805,7 +2805,7 @@ def overlapping_vlan_pools_check(**kwargs):
         epg_key = ':'.join([dn.group('tenant'), dn.group('ap'), dn.group('epg')])
         port_keys = []
         if not dn.group('aep'):
-            fex = dn.group('stfex') if dn.group('stfex') else dn.group('dyfex')
+            fex = dn.group('stfex') if dn.group('stfex') else dnF.group('dyfex')
             port = dn.group('stport') if dn.group('stport') else dn.group('dyport')
             if fex:
                 port_keys.append('/'.join([dn.group('node'), fex, port]))
@@ -5303,7 +5303,7 @@ def cloudsec_encryption_depr_check(tversion, **kwargs):
     except OldVerClassNotFound:
         return Result(result=NA, msg="cversion does not have class cloudsecPreSharedKey")
 
-    if tversion.newer_than("6.0(6a)"):
+    if tversion.newer_than("6.0(6a)"):  
         if len(cloudsecPreSharedKey) > 1:
             data.append(['Multiple CloudSec Encryption Keys found'])
             result = MANUAL
@@ -5962,6 +5962,85 @@ def configpush_shard_check(tversion, **kwargs):
 
     return Result(result=result, headers=headers, data=data, recommended_action=recommended_action, doc_url=doc_url)
 
+
+@check_wrapper(check_title='APIC VMM inventory sync fault (F0132)')
+def apic_vmm_inventory_sync_faults_check(**kwargs):
+    result = PASS
+    headers = ['Fault', 'VMM Domain', 'Controller']
+    data = []
+    unformatted_headers = ["Fault", "Fault DN"]
+    unformatted_data = []
+    recommended_action = "Please look for Faults under VM and Host and fix them via VCenter, then manually re-trigger inventory sync on APIC"
+    doc_url = 'https://datacenter.github.io/ACI-Pre-Upgrade-Validation-Script/validations/#vmm-inventory-partially-synced'
+    vmm_regex = r'comp/prov-VMware/ctrlr-\[(?P<domain>.+?)\]-(?P<controller>.+?)/fault-F0132'
+    faultInsts = icurl('class', 'faultInst.json?query-target-filter=eq(faultInst.code,"F0132")')
+
+    for faultInst in faultInsts:
+        fc = faultInst['faultInst']['attributes']['code']
+        dn = faultInst['faultInst']['attributes']['dn']
+        desc = faultInst['faultInst']['attributes']['descr']
+        change_set = faultInst['faultInst']['attributes']['changeSet']
+
+        dn_array = re.search(vmm_regex, dn)
+        if dn_array and "partial-inv" in change_set:
+            data.append([fc, dn_array.group("domain"), dn_array.group("controller")])
+        elif "partial-inv" in change_set:
+            unformatted_data.append([fc, dn])
+
+    if data or unformatted_data:
+        result = MANUAL
+
+    return Result(
+        result=result,
+        headers=headers,
+        data=data,
+        unformatted_headers=unformatted_headers,
+        unformatted_data=unformatted_data,
+        recommended_action=recommended_action,
+        doc_url=doc_url)
+
+
+@check_wrapper(check_title="Tacacs server unresponsive check")
+def tacacs_server_unresponsive_check(fabric_nodes, tversion, username, password, **kwargs):
+    result = PASS
+    headers = ['APIC_Name', 'count']
+    data = []
+    recommended_action = "Contact Cisco TAC for Support before upgrade"
+    doc_url = "https://datacenter.github.io/ACI-Pre-Upgrade-Validation-Script/validations/#tacacs-server-unresponsive-check"
+
+    if not tversion:
+        return Result(result=MANUAL, msg=TVER_MISSING)
+    if tversion.older_than("6.1(4h)"):
+        controllers = [node for node in fabric_nodes if node['fabricNode']['attributes']['role'] == 'controller']
+        if not controllers:
+            return Result(result=ERROR, msg="No fabricNode of APIC. Is the cluster healthy?", doc_url=doc_url)
+        has_error = False
+        for controller in controllers:
+            try:
+                connection = Connection(controller['fabricNode']['attributes']['address'])
+                connection.username = username
+                connection.password = password
+                connection.connect()
+                connection.cmd('cd /var/log/dme/log && zgrep -c "AAA server is unresponsive or too slow to respond" nginx* 2>/dev/null | awk -F: \'{sum+=$2} END {print sum}\'')
+                count = int(connection.output.strip())
+                if(count > 0):
+                    data.append([controller['fabricNode']['attributes']['name'], count])
+            except Exception as e:
+                has_error = True
+                data.append([controller['fabricNode']['attributes']['name'], str(e)])
+                
+        connection.close()
+
+        if has_error:
+            result = ERROR
+        elif data:
+            result = FAIL_O
+        return Result(result=result,headers=headers,data=data,recommended_action=recommended_action,doc_url=doc_url)
+    else:
+        return Result(result=PASS, msg=VER_NOT_AFFECTED)
+
+    
+
 # ---- Script Execution ----
 
 
@@ -6122,6 +6201,7 @@ class CheckManager:
         standby_sup_sync_check,
         isis_database_byte_check,
         configpush_shard_check,
+        tacacs_server_unresponsive_check,
 
     ]
     ssh_checks = [
