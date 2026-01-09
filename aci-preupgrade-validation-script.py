@@ -6021,7 +6021,7 @@ def tacacs_server_unresponsive_check(fabric_nodes, tversion, username, password,
                 connection.username = username
                 connection.password = password
                 connection.connect()
-                connection.cmd('cd /var/log/dme/log && zgrep -c "AAA server is unresponsive or too slow to respond" nginx* 2>/dev/null | awk -F: \'{sum+=$2} END {print sum}\'')
+                connection.cmd('cd /var/log/dme/log && zgrep -c "AAA server is unresponsive or too slow to respond" nginx.bin.log')
                 count = int(connection.output.strip())
                 if(count > 0):
                     data.append([controller['fabricNode']['attributes']['name'], count])

@@ -14,7 +14,7 @@ test_function = "tacacs_server_unresponsive_check"
 fabricNodes = read_data(dir, "fabricNode.json")
 controllers = [mo for mo in fabricNodes if mo["fabricNode"]["attributes"]["role"] == "controller"]
 
-grep_cmd = 'cd /var/log/dme/log && zgrep -c "AAA server is unresponsive or too slow to respond" nginx* 2>/dev/null | awk -F: \'{sum+=$2} END {print sum}\''
+grep_cmd = 'cd /var/log/dme/log && zgrep -c "AAA server is unresponsive or too slow to respond" nginx.bin.log'
 
 grep_output_zero = "0"
 grep_output_with_events_apic1 = "150"
